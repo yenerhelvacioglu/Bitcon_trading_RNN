@@ -12,9 +12,9 @@ n_neurons = 100
 n_layers = 2
 n_windows = 5
 n_outputs = 1
-start_train = 10000
-end_train = 14001
-end_test = 14402
+start_train = 13500
+end_train = 14000
+end_test = 14100
 size_test = n_windows
 
 # Importing the training set
@@ -36,8 +36,8 @@ data_scaled = sc.fit_transform(data)
 # Creating a data structure with 60 timesteps and t+1 output
 X_train = []
 y_train = []
-for i in range(60, end_train):
-    X_train.append(data_scaled[i-60:i, 0])
+for i in range(start_train, end_train):
+    X_train.append(data_scaled[i-50:i, 0])
     y_train.append(data_scaled[i, 0])
 X_train, y_train = np.array(X_train), np.array(y_train)
 
@@ -48,6 +48,7 @@ X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
 
 # Importing the Keras libraries and packages
 from keras.models import Sequential
+from keras.models import load_model
 from keras.layers import Dense
 from keras.layers import LSTM
 from keras.layers import Dropout
@@ -59,12 +60,12 @@ regressor = Sequential()
 regressor.add(LSTM(units = 3, return_sequences = True, input_shape = (None,1)))
 regressor.add(Dropout(0.2))
 # Adding a second LSTM layer
-regressor.add(LSTM(units = 3, return_sequences = True))
-regressor.add(Dropout(0.2))
+#regressor.add(LSTM(units = 3, return_sequences = True))
+#regressor.add(Dropout(0.2))
 
 # Adding a third LSTM layer
-regressor.add(LSTM(units = 3, return_sequences = True))
-regressor.add(Dropout(0.2))
+#regressor.add(LSTM(units = 3, return_sequences = True))
+#regressor.add(Dropout(0.2))
 
 # Adding a fourth LSTM layer
 regressor.add(LSTM(units = 3))
@@ -76,8 +77,12 @@ regressor.add(Dense(units = 1))
 # Compiling the RNN
 regressor.compile(optimizer = 'rmsprop', loss = 'mean_squared_error')
 
+regressor = load_model('kerasmodel.h5')
+
 # Fitting the RNN to the Training set
-regressor.fit(X_train, y_train, epochs = 10, batch_size = 32)
+regressor.fit(X_train, y_train, epochs = 5, batch_size = 50)
+
+regressor.save('kerasmodel.h5')
 
 # Part 3 - Making the predictions and visualising the results
 
@@ -85,14 +90,14 @@ regressor.fit(X_train, y_train, epochs = 10, batch_size = 32)
 #scaled_real_stock_price = sc.fit_transform(real_stock_price)
 inputs = []
 for i in range(end_train, end_test):
-    inputs.append(data_scaled[i-60:i, 0])
+    inputs.append(data_scaled[i-50:i, 0])
 inputs = np.array(inputs)
 inputs = np.reshape(inputs, (inputs.shape[0], inputs.shape[1], 1))
 predicted_BTC = regressor.predict(inputs)
 predicted_BTC = sc.inverse_transform(predicted_BTC)
 
 # Visualising the results
-plt.plot(data[end_train:], color = 'red', label = 'Real BTC value')
+plt.plot(data[end_train:end_test], color = 'red', label = 'Real BTC value')
 plt.plot(predicted_BTC, color = 'blue', label = 'Predicted BTC value')
 plt.title('BTC Price Prediction')
 plt.xlabel('Time')
