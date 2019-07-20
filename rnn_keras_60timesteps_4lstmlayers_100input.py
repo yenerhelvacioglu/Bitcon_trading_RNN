@@ -12,7 +12,7 @@ n_neurons = 100
 n_layers = 2
 n_windows = 10
 n_outputs = 1
-start_train = 13500
+start_train = 10000
 end_train = 14000
 end_test = 14400
 batch_size = 100
@@ -54,23 +54,25 @@ from keras.models import load_model
 from keras.layers import Dense
 from keras.layers import LSTM
 from keras.layers import Dropout
+from time import time
+from keras.callbacks import TensorBoard
 
 # Initialising the RNN
 regressor = Sequential()
 
 # Adding the input layer and the LSTM layer
-regressor.add(LSTM(units = 3, return_sequences = True, input_shape = (n_windows,98)))
+regressor.add(LSTM(units = 100, return_sequences = True, input_shape = (n_windows,98)))
 regressor.add(Dropout(0.2))
 # Adding a second LSTM layer
-#regressor.add(LSTM(units = 3, return_sequences = True))
-#regressor.add(Dropout(0.2))
+regressor.add(LSTM(units = 3, return_sequences = True))
+regressor.add(Dropout(0.2))
 
 # Adding a third LSTM layer
-#regressor.add(LSTM(units = 3, return_sequences = True))
-#regressor.add(Dropout(0.2))
+regressor.add(LSTM(units = 3, return_sequences = True))
+regressor.add(Dropout(0.2))
 
 # Adding a fourth LSTM layer
-regressor.add(LSTM(units = 3))
+regressor.add(LSTM(units = 100))
 regressor.add(Dropout(0.2))
 
 # Adding the output layer
@@ -91,11 +93,13 @@ inputs = np.reshape(inputs, (inputs.shape[0], inputs.shape[1], 98))
 
 # Visualising the results
 real_BTC=data_scaled[end_train:end_test,0]
+tensorboard = TensorBoard(log_dir='logs/{}'.format(time()), histogram_freq=0, batch_size=batch_size, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None, embeddings_data=None, update_freq='epoch')
+
 
 #regressor = load_model('kerasmodel.h5')
 # Fitting the RNN to the Training set
-regressor.fit(X_train, y_train, epochs = 1, batch_size = batch_size, validation_data=(inputs, real_BTC))
-#regressor.save('kerasmodel.h5')
+regressor.fit(X_train, y_train, epochs = 1000, batch_size = batch_size, validation_data=(inputs, real_BTC),callbacks=[tensorboard])
+regressor.save('kerasmodel.h5')
 
 predicted_BTC = regressor.predict(inputs)
 
