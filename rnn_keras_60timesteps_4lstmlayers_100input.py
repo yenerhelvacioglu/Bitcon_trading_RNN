@@ -10,12 +10,12 @@ import pandas as pd
 n_inputs = 99
 n_neurons = 100
 n_layers = 2
-n_windows = 5
+n_windows = 10
 n_outputs = 1
 start_train = 13500
 end_train = 14000
 end_test = 14400
-size_test = n_windows
+batch_size = 100
 
 # Importing the training set
 data = pd.read_csv('data.csv', index_col=0)
@@ -39,7 +39,7 @@ x_scaled = sc_x.fit_transform(data.iloc[:,0:1].values)
 X_train = []
 y_train = []
 for i in range(start_train, end_train):
-    X_train.append(data_scaled[i-50:i, 0:98])
+    X_train.append(data_scaled[i-n_windows:i, 0:98])
     y_train.append(data_scaled[i, 0])
 X_train, y_train = np.array(X_train), np.array(y_train)
 
@@ -59,7 +59,7 @@ from keras.layers import Dropout
 regressor = Sequential()
 
 # Adding the input layer and the LSTM layer
-regressor.add(LSTM(units = 3, return_sequences = True, input_shape = (50,98)))
+regressor.add(LSTM(units = 3, return_sequences = True, input_shape = (n_windows,98)))
 regressor.add(Dropout(0.2))
 # Adding a second LSTM layer
 #regressor.add(LSTM(units = 3, return_sequences = True))
@@ -79,25 +79,26 @@ regressor.add(Dense(units = 1))
 # Compiling the RNN
 regressor.compile(optimizer = 'rmsprop', loss = 'mean_squared_error')
 
-#regressor = load_model('kerasmodel.h5')
-# Fitting the RNN to the Training set
-regressor.fit(X_train, y_train, epochs = 1, batch_size = 50)
-#regressor.save('kerasmodel.h5')
-
 # Part 3 - Making the predictions and visualising the results
 
 # Getting the predicted BTC price
 #scaled_real_stock_price = sc.fit_transform(real_stock_price)
 inputs = []
 for i in range(end_train, end_test):
-    inputs.append(data_scaled[i-50:i, 0:98])
+    inputs.append(data_scaled[i-n_windows:i, 0:98])
 inputs = np.array(inputs)
 inputs = np.reshape(inputs, (inputs.shape[0], inputs.shape[1], 98))
-predicted_BTC = regressor.predict(inputs)
-predicted_BTC = sc_x.inverse_transform(predicted_BTC)
 
 # Visualising the results
-real_BTC=data.iloc[end_train:end_test,0].values
+real_BTC=data_scaled[end_train:end_test,0]
+
+#regressor = load_model('kerasmodel.h5')
+# Fitting the RNN to the Training set
+regressor.fit(X_train, y_train, epochs = 1, batch_size = batch_size, validation_data=(inputs, real_BTC))
+#regressor.save('kerasmodel.h5')
+
+predicted_BTC = regressor.predict(inputs)
+
 plt.plot(real_BTC, color = 'red', label = 'Real BTC value')
 plt.plot(predicted_BTC, color = 'blue', label = 'Predicted BTC value')
 plt.title('BTC Price Prediction')
