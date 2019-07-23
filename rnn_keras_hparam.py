@@ -71,17 +71,17 @@ HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.1, 0.2))
 HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['adam', 'sgd']))
 METRIC_ACCURACY = 'val_loss'
 
-with tf.contrib.summary.create_file_writer('logs/hparam_tuning').as_default():
-    hp.hparams_config(
-        hparams=[HP_NUM_UNITS, HP_DROPOUT, HP_OPTIMIZER],
-        metrics=[hp.Metric(METRIC_ACCURACY, display_name='val_loss')],
-        )
+#with tf.contrib.summary.create_file_writer('logs/hparam_tuning').as_default():
+hp.hparams_config(
+    hparams=[HP_NUM_UNITS, HP_DROPOUT, HP_OPTIMIZER],
+    metrics=[hp.Metric(METRIC_ACCURACY, display_name='val_loss')],
+    )
 
 def run(run_dir, hparams):
     with tf.contrib.summary.create_file_writer(run_dir).as_default():
         hp.hparams(hparams)  # record the values used in this trial
         accuracy = train_test_model(hparams)
-        tf.contrib.summary.scalar(METRIC_ACCURACY, accuracy, step=1)
+        tf.summary.scalar(METRIC_ACCURACY, accuracy)
 
 session_num = 0
                         
@@ -96,8 +96,7 @@ def train_test_model(hparams):
     model.add(LSTM(units=3))
     model.add(Dense(units=1))
     model.compile(optimizer=hparams[HP_OPTIMIZER], loss='mean_squared_error')
-    print({h.name: hparams[h] for h in hparams})
-    history = model.fit(X_train, y_train, epochs=1, batch_size=batch_size, validation_data=(X_test, y_test),callbacks=[tensorboard, hp.KerasCallback(writer='logs/hparam_tuning', hparams=hparams)])
+    history = model.fit(X_train, y_train, epochs=1, batch_size=batch_size, validation_data=(X_test, y_test),callbacks=[tensorboard])
     return history.history['val_loss']
 
 for num_units in HP_NUM_UNITS.domain.values:
@@ -108,7 +107,10 @@ for num_units in HP_NUM_UNITS.domain.values:
                 HP_DROPOUT: dropout_rate,
                 HP_OPTIMIZER: optimizer,
             }
-            train_test_model(hparams)
+            run_name = "run-%d" % session_num
+            print('--- Starting trial: %s' % run_name)
+            print({h.name: hparams[h] for h in hparams})
+            run('logs/hparam_tuning/' + run_name, hparams)
             session_num += 1
 
 #predicted_BTC = regressor.predict(inputs)
