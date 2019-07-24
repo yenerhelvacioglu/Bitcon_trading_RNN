@@ -64,31 +64,35 @@ from keras.callbacks import TensorBoard
 import tensorflow as tf
 from tensorboard.plugins.hparams import api as hp
 
-tensorboard = TensorBoard(log_dir='logs/{}'.format(time()), histogram_freq=10, batch_size=batch_size, write_graph=True, write_grads=True, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None, embeddings_data=None, update_freq='epoch')
+tf.enable_eager_execution()
+
+#logdir = 'logs/hparam_tuning'
+#tensorboard = TensorBoard(log_dir='logs/{}'.format(time()), histogram_freq=0, batch_size=batch_size, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None, embeddings_data=None, update_freq='epoch')
 
 HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([3, 6]))
 HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.1, 0.2))
 HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['adam', 'sgd']))
 METRIC_ACCURACY = 'val_loss'
 
-#with tf.contrib.summary.create_file_writer('logs/hparam_tuning').as_default():
+#with tf.compat.v1.summary.FileWriter('logs/hparam_tuning'):
 hp.hparams_config(
     hparams=[HP_NUM_UNITS, HP_DROPOUT, HP_OPTIMIZER],
     metrics=[hp.Metric(METRIC_ACCURACY, display_name='val_loss')],
     )
 
 def run(run_dir, hparams):
-    with tf.contrib.summary.create_file_writer(run_dir).as_default():
-        hp.hparams(hparams)  # record the values used in this trial
-        accuracy = train_test_model(hparams)
-        tf.summary.scalar(METRIC_ACCURACY, accuracy)
+#    with tf.compat.v1.summary.FileWriter(run_dir):
+    hp.hparams(hparams)  # record the values used in this trial
+    accuracy = train_test_model(run_dir,hparams)
+        #tf.compat.v1.summary.scalar(METRIC_ACCURACY, accuracy)
+    return 0
 
 session_num = 0
                         
 # Compiling the RNN
 #regressor.compile(optimizer = 'adam', loss = 'mean_squared_error')
 
-def train_test_model(hparams):
+def train_test_model(run_dir,hparams):
     hp.hparams(hparams)
     model = Sequential()
     model.add(LSTM(hparams[HP_NUM_UNITS], return_sequences=True, input_shape=(n_windows, 98)))
@@ -96,7 +100,7 @@ def train_test_model(hparams):
     model.add(LSTM(units=3))
     model.add(Dense(units=1))
     model.compile(optimizer=hparams[HP_OPTIMIZER], loss='mean_squared_error')
-    history = model.fit(X_train, y_train, epochs=1, batch_size=batch_size, validation_data=(X_test, y_test),callbacks=[tensorboard])
+    history = model.fit(X_train, y_train, epochs=1, batch_size=batch_size, validation_data=(X_test, y_test),callbacks=[TensorBoard(log_dir=run_dir, histogram_freq=0, batch_size=batch_size, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None, embeddings_data=None, update_freq='epoch'), hp.KerasCallback(writer=run_dir, hparams=hparams)])
     return history.history['val_loss']
 
 for num_units in HP_NUM_UNITS.domain.values:
