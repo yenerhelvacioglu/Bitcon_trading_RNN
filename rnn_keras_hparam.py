@@ -54,6 +54,7 @@ X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 98))
 # Part 2 - Building the RNN
 
 # Importing the Keras libraries and packages
+'''
 from keras.models import Sequential
 from keras.models import load_model
 from keras.layers import Dense
@@ -63,8 +64,18 @@ from time import time
 from keras.callbacks import TensorBoard
 import tensorflow as tf
 from tensorboard.plugins.hparams import api as hp
+'''
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import load_model
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import LSTM
+from tensorflow.keras.layers import Dropout
+from time import time
+from tensorflow.keras.callbacks import TensorBoard
+import tensorflow as tf
+from tensorboard.plugins.hparams import api as hp
 
-tf.enable_eager_execution()
+#tf.enable_eager_execution()
 
 #logdir = 'logs/hparam_tuning'
 #tensorboard = TensorBoard(log_dir='logs/{}'.format(time()), histogram_freq=0, batch_size=batch_size, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None, embeddings_data=None, update_freq='epoch')
