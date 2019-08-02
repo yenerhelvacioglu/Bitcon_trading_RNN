@@ -12,7 +12,7 @@ n_neurons = 100
 n_layers = 2
 n_windows = 10
 n_outputs = 1
-start_train = 13900
+start_train = 10000
 end_train = 14000
 end_test = 14400
 batch_size = 100
@@ -75,44 +75,39 @@ from tensorflow.keras.callbacks import TensorBoard
 import tensorflow as tf
 from tensorboard.plugins.hparams import api as hp
 
-#tf.enable_eager_execution()
-
 #logdir = 'logs/hparam_tuning'
 #tensorboard = TensorBoard(log_dir='logs/{}'.format(time()), histogram_freq=0, batch_size=batch_size, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None, embeddings_data=None, update_freq='epoch')
 
-HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([3, 6]))
-HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.1, 0.2))
-HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['adam', 'sgd']))
+HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([200,400]))
+HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.1,0.2))
+HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['sgd','adam']))
 METRIC_ACCURACY = 'val_loss'
 
 #with tf.compat.v1.summary.FileWriter('logs/hparam_tuning'):
-hp.hparams_config(
-    hparams=[HP_NUM_UNITS, HP_DROPOUT, HP_OPTIMIZER],
-    metrics=[hp.Metric(METRIC_ACCURACY, display_name='val_loss')],
-    )
+hp.hparams_config(hparams=[HP_NUM_UNITS, HP_DROPOUT, HP_OPTIMIZER],metrics=[hp.Metric(METRIC_ACCURACY,display_name='val_loss')],)
 
 def run(run_dir, hparams):
 #    with tf.compat.v1.summary.FileWriter(run_dir):
     hp.hparams(hparams)  # record the values used in this trial
-    accuracy = train_test_model(run_dir,hparams)
+    predicted_BTC = train_test_model(run_dir,hparams)
         #tf.compat.v1.summary.scalar(METRIC_ACCURACY, accuracy)
-    return 0
+    return predicted_BTC
 
-session_num = 0
+session_num = 1
                         
 # Compiling the RNN
-#regressor.compile(optimizer = 'adam', loss = 'mean_squared_error')
 
 def train_test_model(run_dir,hparams):
     hp.hparams(hparams)
+    tf.compat.v1.keras.backend.clear_session()
     model = Sequential()
-    model.add(LSTM(hparams[HP_NUM_UNITS], return_sequences=True, input_shape=(n_windows, 98)))
+    model.add(LSTM(hparams[HP_NUM_UNITS], input_shape=(n_windows, 98)))
     model.add(Dropout(hparams[HP_DROPOUT]))
-    model.add(LSTM(units=3))
-    model.add(Dense(units=1))
+    model.add(Dense(units=1,activation = 'relu'))
     model.compile(optimizer=hparams[HP_OPTIMIZER], loss='mean_squared_error')
-    history = model.fit(X_train, y_train, epochs=1, batch_size=batch_size, validation_data=(X_test, y_test),callbacks=[TensorBoard(log_dir=run_dir, histogram_freq=0, batch_size=batch_size, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None, embeddings_data=None, update_freq='epoch'), hp.KerasCallback(writer=run_dir, hparams=hparams)])
-    return history.history['val_loss']
+    model.fit(X_train, y_train, epochs=10,batch_size=batch_size, validation_data=(X_test, y_test),callbacks=[TensorBoard(log_dir=run_dir, histogram_freq=0, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None, embeddings_data=None, update_freq='epoch'), hp.KerasCallback(writer=run_dir, hparams=hparams)])
+    predicted_BTC = model.predict(X_test)
+    return predicted_BTC
 
 for num_units in HP_NUM_UNITS.domain.values:
     for dropout_rate in (HP_DROPOUT.domain.min_value, HP_DROPOUT.domain.max_value):
@@ -125,10 +120,11 @@ for num_units in HP_NUM_UNITS.domain.values:
             run_name = "run-%d" % session_num
             print('--- Starting trial: %s' % run_name)
             print({h.name: hparams[h] for h in hparams})
-            run('logs/hparam_tuning/' + run_name, hparams)
+            predicted_BTC = run('logs/hparam_tuning/' + run_name, hparams)
+            pd.DataFrame(predicted_BTC).to_csv('predicted_' + run_name + '.csv')
             session_num += 1
 
-#predicted_BTC = regressor.predict(inputs)
+pd.DataFrame(y_test).to_csv('actual.csv')
 
 # plt.plot(real_BTC, color = 'red', label = 'Real BTC value')
 # plt.plot(predicted_BTC, color = 'blue', label = 'Predicted BTC value')
