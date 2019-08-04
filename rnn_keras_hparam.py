@@ -20,28 +20,19 @@ batch_size = 100
 
 # Importing the training set
 data = pd.read_csv('data.csv', index_col=0)
-len(data.columns)
-#data = data.iloc[:,0:1].values
 
 # Feature Scaling
 from sklearn.preprocessing import MinMaxScaler
-#sc = MinMaxScaler(feature_range = (0, 1))
 sc = MinMaxScaler(feature_range = (0, 1))
-#training_set_scaled = sc.fit_transform(training_set)
 data_scaled = sc.fit_transform(data)
 
-sc_x = MinMaxScaler(feature_range = (0, 1))
-x_scaled = sc_x.fit_transform(data.iloc[:,0:1].values)
-
-# Creating a data structure with 60 timesteps and t+1 output
+# Creating a data structure with n_windows timesteps
 X_train = []
 y_train = []
 for i in range(start_train, end_train):
     X_train.append(data_scaled[i-n_windows:i, 0:98])
     y_train.append(data_scaled[i, 0])
 X_train, y_train = np.array(X_train), np.array(y_train)
-
-# Reshaping
 X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 98))
 
 X_test = []
@@ -55,17 +46,6 @@ X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 98))
 # Part 2 - Building the RNN
 
 # Importing the Keras libraries and packages
-'''
-from keras.models import Sequential
-from keras.models import load_model
-from keras.layers import Dense
-from keras.layers import LSTM
-from keras.layers import Dropout
-from time import time
-from keras.callbacks import TensorBoard
-import tensorflow as tf
-from tensorboard.plugins.hparams import api as hp
-'''
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.models import load_model
 from tensorflow.keras.layers import Dense
@@ -80,61 +60,48 @@ from tensorflow.keras import initializers
 from tensorflow.keras import activations
 from tensorboard.plugins.hparams import api as hp
 
-#logdir = 'logs/hparam_tuning'
-#tensorboard = TensorBoard(log_dir='logs/{}'.format(time()), histogram_freq=0, batch_size=batch_size, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None, embeddings_data=None, update_freq='epoch')
-
-HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([100,200,300,400,500]))
-HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.1,0.2))
+HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([100]))
+HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.3,0.31))
 HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['rmsprop']))
 METRIC_ACCURACY = 'loss'
 
-#with tf.compat.v1.summary.FileWriter('logs/hparam_tuning'):
 hp.hparams_config(hparams=[HP_NUM_UNITS, HP_DROPOUT, HP_OPTIMIZER],metrics=[hp.Metric(METRIC_ACCURACY,display_name='loss')],)
 
 def run(run_dir, hparams):
-#    with tf.compat.v1.summary.FileWriter(run_dir):
     hp.hparams(hparams)  # record the values used in this trial
     predicted_BTC = train_test_model(run_dir,hparams)
-        #tf.compat.v1.summary.scalar(METRIC_ACCURACY, accuracy)
     return predicted_BTC
 
-session_num = 1
-
-# Compiling the RNN
-
 optimizers.RMSprop(lr=0.001,rho=0.8,decay=0.8)
-#optimizers.Nadam(lr=0.001,schedule_decay=0.0001)
-#activations.relu(x, alpha=0.01, max_value=None, threshold=0.0)
 
 def train_test_model(run_dir,hparams):
     hp.hparams(hparams)
     tf.compat.v1.keras.backend.clear_session()
     model = Sequential()
-    #model.add(Dense(units=hparams[HP_NUM_UNITS],activation='relu',input_shape=(n_windows,98)))
     model.add(LSTM(hparams[HP_NUM_UNITS], input_shape=(n_windows, 98), kernel_initializer=initializers.TruncatedNormal(mean=0.0,stddev=0.05),bias_initializer=initializers.Constant(value=0.1)))
     model.add(Dropout(hparams[HP_DROPOUT]))
     model.add(Dense(units=1, activation='relu'))
     model.compile(optimizer=hparams[HP_OPTIMIZER], loss='mean_squared_error') # metrics=['mae'])
     model.summary()
-    model.fit(X_train, y_train, epochs=1000, batch_size=batch_size, validation_data=(X_test, y_test),callbacks=[TensorBoard(log_dir=run_dir, histogram_freq=100, write_graph=True , write_grads=True, write_images=False, update_freq='epoch'), hp.KerasCallback(writer=run_dir,hparams=hparams)])
+    model.fit(X_train, y_train, epochs=10, batch_size=batch_size, validation_data=(X_test, y_test),callbacks=[TensorBoard(log_dir=run_dir, histogram_freq=1, write_graph=True , write_grads=True, write_images=False, update_freq='epoch'), hp.KerasCallback(writer=run_dir,hparams=hparams)])
     predicted_BTC = model.predict(X_test)
     return predicted_BTC
 
+# Part 3 - Running the model
+
 for num_units in HP_NUM_UNITS.domain.values:
-    for dropout_rate in (HP_DROPOUT.domain.min_value,HP_DROPOUT.domain.max_value):
+    for dropout_rate in np.arange(HP_DROPOUT.domain.min_value,HP_DROPOUT.domain.max_value,0.1):
         for optimizer in HP_OPTIMIZER.domain.values:
             hparams = {
                 HP_NUM_UNITS: num_units,
-                HP_DROPOUT: dropout_rate,
+                HP_DROPOUT: round(dropout_rate,1),
                 HP_OPTIMIZER: optimizer,
-            }
-            
+            } 
             run_name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
             print('--- Starting trial: %s' % run_name)
             print({h.name: hparams[h] for h in hparams})
             predicted_BTC = run('logs/hparam_tuning/' + run_name, hparams)
             pd.DataFrame(predicted_BTC).to_csv('predicted_' + run_name + '.csv')
-            session_num += 1
 
 pd.DataFrame(y_test).to_csv('actual.csv')
 
