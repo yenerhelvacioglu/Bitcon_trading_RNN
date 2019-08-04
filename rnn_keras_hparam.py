@@ -6,11 +6,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import datetime
 
 n_inputs = 99
 n_neurons = 100
 n_layers = 2
-n_windows = 10
+n_windows = 5
 n_outputs = 1
 start_train = 10000
 end_train = 14000
@@ -69,22 +70,26 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.models import load_model
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import LSTM
-from tensorflow.keras.layers import Dropout
+from tensorflow.keras.layers import GRU
+from tensorflow.keras.layers import Dropout 
 from time import time
 from tensorflow.keras.callbacks import TensorBoard
 import tensorflow as tf
+from tensorflow.keras import optimizers
+from tensorflow.keras import initializers
+from tensorflow.keras import activations
 from tensorboard.plugins.hparams import api as hp
 
 #logdir = 'logs/hparam_tuning'
 #tensorboard = TensorBoard(log_dir='logs/{}'.format(time()), histogram_freq=0, batch_size=batch_size, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None, embeddings_data=None, update_freq='epoch')
 
-HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([200,400]))
+HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([100,200,300,400,500]))
 HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.1,0.2))
-HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['sgd','adam']))
-METRIC_ACCURACY = 'val_loss'
+HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['rmsprop']))
+METRIC_ACCURACY = 'loss'
 
 #with tf.compat.v1.summary.FileWriter('logs/hparam_tuning'):
-hp.hparams_config(hparams=[HP_NUM_UNITS, HP_DROPOUT, HP_OPTIMIZER],metrics=[hp.Metric(METRIC_ACCURACY,display_name='val_loss')],)
+hp.hparams_config(hparams=[HP_NUM_UNITS, HP_DROPOUT, HP_OPTIMIZER],metrics=[hp.Metric(METRIC_ACCURACY,display_name='loss')],)
 
 def run(run_dir, hparams):
 #    with tf.compat.v1.summary.FileWriter(run_dir):
@@ -94,30 +99,37 @@ def run(run_dir, hparams):
     return predicted_BTC
 
 session_num = 1
-                        
+
 # Compiling the RNN
+
+optimizers.RMSprop(lr=0.001,rho=0.8,decay=0.8)
+#optimizers.Nadam(lr=0.001,schedule_decay=0.0001)
+#activations.relu(x, alpha=0.01, max_value=None, threshold=0.0)
 
 def train_test_model(run_dir,hparams):
     hp.hparams(hparams)
     tf.compat.v1.keras.backend.clear_session()
     model = Sequential()
-    model.add(LSTM(hparams[HP_NUM_UNITS], input_shape=(n_windows, 98)))
+    #model.add(Dense(units=hparams[HP_NUM_UNITS],activation='relu',input_shape=(n_windows,98)))
+    model.add(LSTM(hparams[HP_NUM_UNITS], input_shape=(n_windows, 98), kernel_initializer=initializers.TruncatedNormal(mean=0.0,stddev=0.05),bias_initializer=initializers.Constant(value=0.1)))
     model.add(Dropout(hparams[HP_DROPOUT]))
-    model.add(Dense(units=1,activation = 'relu'))
-    model.compile(optimizer=hparams[HP_OPTIMIZER], loss='mean_squared_error')
-    model.fit(X_train, y_train, epochs=10,batch_size=batch_size, validation_data=(X_test, y_test),callbacks=[TensorBoard(log_dir=run_dir, histogram_freq=0, write_graph=True, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None, embeddings_data=None, update_freq='epoch'), hp.KerasCallback(writer=run_dir, hparams=hparams)])
+    model.add(Dense(units=1, activation='relu'))
+    model.compile(optimizer=hparams[HP_OPTIMIZER], loss='mean_squared_error') # metrics=['mae'])
+    model.summary()
+    model.fit(X_train, y_train, epochs=1000, batch_size=batch_size, validation_data=(X_test, y_test),callbacks=[TensorBoard(log_dir=run_dir, histogram_freq=100, write_graph=True , write_grads=True, write_images=False, update_freq='epoch'), hp.KerasCallback(writer=run_dir,hparams=hparams)])
     predicted_BTC = model.predict(X_test)
     return predicted_BTC
 
 for num_units in HP_NUM_UNITS.domain.values:
-    for dropout_rate in (HP_DROPOUT.domain.min_value, HP_DROPOUT.domain.max_value):
+    for dropout_rate in (HP_DROPOUT.domain.min_value,HP_DROPOUT.domain.max_value):
         for optimizer in HP_OPTIMIZER.domain.values:
             hparams = {
                 HP_NUM_UNITS: num_units,
                 HP_DROPOUT: dropout_rate,
                 HP_OPTIMIZER: optimizer,
             }
-            run_name = "run-%d" % session_num
+            
+            run_name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
             print('--- Starting trial: %s' % run_name)
             print({h.name: hparams[h] for h in hparams})
             predicted_BTC = run('logs/hparam_tuning/' + run_name, hparams)
