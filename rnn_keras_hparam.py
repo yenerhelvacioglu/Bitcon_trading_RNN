@@ -8,12 +8,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import datetime
 
-n_inputs = 98 # total number of inputs minus 1 as it starts from 0
+n_inputs = 99 # total number of inputs minus 1 as it starts from 0
+n_outputs = 99
 n_windows = 5
-n_outputs = 1
 start_train = 1000
 end_train = 11000
-end_test = 13000
+end_test = 12000
 batch_size = 1000
 
 # Importing the training set
@@ -31,22 +31,22 @@ X_train = []
 y_train = []
 for i in range(start_train, end_train, n_windows):
     X_train.append(data_scaled[i-n_windows:i, 0:n_inputs])
-    y_train.append(data_scaled[i:i+n_windows, 0])
+    y_train.append(data_scaled[i:i+n_windows, 0:n_outputs])
 X_train, y_train = np.array(X_train), np.array(y_train)
 X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], n_inputs))
-y_train = np.reshape(y_train, (y_train.shape[0], y_train.shape[1], 1))
+y_train = np.reshape(y_train, (y_train.shape[0], y_train.shape[1], n_outputs))
 print(X_train.shape,y_train.shape)
 
 X_test = []
 y_test = []
 for i in range(end_train, end_test, n_windows):
     X_test.append(data_scaled[i-n_windows:i, 0:n_inputs])
-    y_test.append(data_scaled[i:i+n_windows, 0])
+    y_test.append(data_scaled[i:i+n_windows, 0:n_outputs])
 X_test, y_test = np.array(X_test), np.array(y_test)
 X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], n_inputs))
-y_test = np.reshape(y_test, (y_test.shape[0], y_test.shape[1], 1))
-pd.DataFrame(np.reshape(X_test[:,:,0:1], (end_test-end_train))).to_csv('X.csv')
-pd.DataFrame(np.reshape(y_test, (end_test-end_train))).to_csv('y.csv')
+y_test = np.reshape(y_test, (y_test.shape[0], y_test.shape[1], n_outputs))
+pd.DataFrame(np.reshape(X_test, (end_test-end_train,n_inputs))).to_csv('X.csv')
+pd.DataFrame(np.reshape(y_test, (end_test-end_train,n_outputs))).to_csv('y.csv')
 
 # Part 2 - Building the RNN
 
@@ -85,11 +85,14 @@ def train_test_model(run_dir,hparams):
     model = Sequential()
     model.add(LSTM(hparams[HP_NUM_UNITS], return_sequences=True ,input_shape=(n_windows, n_inputs) ,activation='relu' ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT]))
     model.add(LSTM(hparams[HP_NUM_UNITS], activation='relu' ,return_sequences=True ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
-    model.add(Dense(units=1, activation='relu'))
+    model.add(Dense(units=99, activation='relu'))
     model.compile(optimizer=hparams[HP_OPTIMIZER], loss='mse') # metrics=['mae'])
     model.summary()
     #model.load_weights('model.h5')
-    model.fit(X_train, y_train, epochs=1, batch_size=batch_size, validation_data=(X_test, y_test),callbacks=[TensorBoard(log_dir=run_dir, histogram_freq=50, write_graph=True , write_grads=True, update_freq='epoch'), hp.KerasCallback(writer=run_dir,hparams=hparams)])
+    #model.fit(X_train, y_train, epochs=5, batch_size=batch_size, validation_data=(X_test, y_test))
+    model.fit(X_train, y_train, epochs=1, batch_size=batch_size, validation_data=(X_test, y_test), callbacks=[
+         TensorBoard(log_dir=run_dir, histogram_freq=50, write_graph=True, write_grads=True, update_freq='epoch'),
+         hp.KerasCallback(writer=run_dir, hparams=hparams)])
     model.save_weights('model.h5')
     predicted_BTC = model.predict(X_test)
     return predicted_BTC
@@ -108,7 +111,7 @@ for num_units in HP_NUM_UNITS.domain.values:
             print('--- Starting trial: %s' % run_name)
             print({h.name: hparams[h] for h in hparams})
             predicted_BTC = run('logs/hparam_tuning/' + run_name, hparams)
-            pd.DataFrame(np.reshape(predicted_BTC, ((end_test-end_train)))).to_csv('pred' +run_name+ '.csv')
+            pd.DataFrame(np.reshape(predicted_BTC, ((end_test-end_train),n_outputs))).to_csv('pred' +run_name+ '.csv')
 
 # plt.plot(real_BTC, color = 'red', label = 'Real BTC value')
 # plt.plot(predicted_BTC, color = 'blue', label = 'Predicted BTC value')
