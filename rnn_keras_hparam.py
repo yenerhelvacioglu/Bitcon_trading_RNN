@@ -68,7 +68,7 @@ from tensorboard.plugins.hparams import api as hp
 
 HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([100]))
 HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.1,0.11))
-HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['adam']))
+HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['rmsprop']))
 HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(n_outputs-1))))
 METRIC_ACCURACY = 'loss'
 
@@ -87,13 +87,13 @@ def train_test_model(run_dir,hparams):
     model = Sequential()
     model.add(LSTM(hparams[HP_NUM_UNITS], return_sequences=True ,input_shape=(n_windows, n_inputs) ,activation='relu' ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT]))
     model.add(LSTM(hparams[HP_NUM_UNITS], activation='relu' ,return_sequences=True ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
-    model.add(Dense(units=1, activation='linear'))
+    model.add(Dense(units=1, activation='relu'))
     model.compile(optimizer=hparams[HP_OPTIMIZER], loss='mse') # metrics=['mae'])
     model.summary()
     #model.load_weights('model.h5')
     #model.fit(X_train, y_train[:,:,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:,:,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1]))
     model.fit(X_train, y_train[:,:,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:,:,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1]), callbacks=[
-         TensorBoard(log_dir=run_dir, histogram_freq=50, write_graph=True, write_grads=True, update_freq='epoch'),
+         TensorBoard(log_dir=run_dir, histogram_freq=100, write_graph=True, write_grads=True, update_freq='epoch'),
          hp.KerasCallback(writer=run_dir, hparams=hparams)])
     #model.save_weights('model.h5')
     predicted = model.predict(X_test)
