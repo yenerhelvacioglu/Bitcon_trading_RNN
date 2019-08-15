@@ -20,12 +20,13 @@ from tensorflow.keras import activations
 from tensorboard.plugins.hparams import api as hp
 from tensorflow.keras import backend as K
 from functools import partial
+from keras.utils import to_categorical
 
 # Part 1 - Data Preprocessing
 
 n_inputs = 3828 # total number of inputs minus 1 as it starts from 0
 n_outputs = 3828
-start_train = 6
+start_train = 0
 end_train = 96
 end_test = 126
 batch_size = 12
@@ -36,12 +37,13 @@ data = pd.read_csv('rating_data.csv', index_col=0)
 # Feature Scaling
 sc = MinMaxScaler(feature_range = (0, 1))
 data_scaled = sc.fit_transform(data)
+#data_scaled = np.concatenate([data.iloc[:,0:n_outputs].values, sc.fit_transform(data.iloc[:,n_outputs:n_inputs])],axis=1)
 
 # Creating a data structure with n_windows timesteps
 def create_data(data_scaled, start_train ,end_train ,n_windows):
     X_train = []
     y_train = []
-    for i in range(start_train, end_train, n_windows):
+    for i in range(start_train, end_train):
         X_train.append(data_scaled[i-n_windows:i, 0:n_inputs])
         y_train.append(data_scaled[i:i+n_windows, 0:n_outputs])
     X_train, y_train = np.array(X_train), np.array(y_train)
@@ -56,11 +58,11 @@ HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([100]))
 HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.1,0.11))
 HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['rmsprop']))
 HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(1))))
-HP_WINDOW = hp.HParam('window_size',hp.Discrete([6]))
+HP_WINDOW = hp.HParam('window_size',hp.Discrete([3,6,12]))
 #HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(n_outputs-1))))
-METRIC_ACCURACY = 'loss'
+METRIC_ACCURACY = 'accuracy'
 
-hp.hparams_config(hparams=[HP_NUM_UNITS, HP_DROPOUT, HP_OPTIMIZER, HP_OUTPUT, HP_WINDOW], metrics=[hp.Metric(METRIC_ACCURACY, display_name='loss')],)
+hp.hparams_config(hparams=[HP_NUM_UNITS, HP_DROPOUT, HP_OPTIMIZER, HP_OUTPUT, HP_WINDOW], metrics=[hp.Metric(METRIC_ACCURACY, display_name='Accuracy')],)
 
 def run(run_dir, hparams):
     hp.hparams(hparams)  # record the values used in this trial
@@ -77,21 +79,21 @@ def get_weighted_loss(weights):
 
 def train_test_model(run_dir,hparams):
     hp.hparams(hparams)
-    [X_train, y_train] = create_data(data_scaled=data_scaled, start_train=start_train, end_train=end_train, n_windows=hparams[HP_WINDOW])
-    [X_test, y_test] = create_data(data_scaled=data_scaled, start_train=end_train, end_train=end_test, n_windows=hparams[HP_WINDOW])
-    pd.DataFrame(np.reshape(X_test, (end_test - end_train, n_inputs))).to_csv('X.csv')
-    pd.DataFrame(np.reshape(y_test, (end_test - end_train, n_outputs))).to_csv('y.csv')
+    [X_train, y_train] = create_data(data_scaled=data_scaled, start_train=hparams[HP_WINDOW], end_train=end_train, n_windows=hparams[HP_WINDOW])
+    [X_test, y_test] = create_data(data_scaled=data_scaled, start_train=end_train, end_train=end_test-hparams[HP_WINDOW], n_windows=hparams[HP_WINDOW])
+    #pd.DataFrame(sc.inverse_transform(np.reshape(X_test, ((end_test - end_train)*hparams[HP_WINDOW], n_inputs)))).to_csv('X.csv')
+    #pd.DataFrame(sc.inverse_transform(np.reshape(y_test, ((end_test - end_train)*hparams[HP_WINDOW], n_outputs)))).to_csv('y.csv')
     tf.compat.v1.keras.backend.clear_session()
     model = Sequential()
     model.add(LSTM(hparams[HP_NUM_UNITS], return_sequences=True ,input_shape=(hparams[HP_WINDOW], n_inputs) ,activation='tanh' ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT]))
     model.add(LSTM(hparams[HP_NUM_UNITS], activation='tanh' ,return_sequences=False ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
     model.add(Dense(units=n_outputs, activation='linear'))
     weights = np.full([1,1,n_outputs],0.01)
-    weights[0,0,0:57] = 1
+    weights[0,0,0:58] = 1
     model.compile(optimizer=hparams[HP_OPTIMIZER], loss=get_weighted_loss(weights=weights)) # metrics=['mae'])
     model.summary()
     #model.load_weights('model.h5')
-    model.fit(X_train, y_train[:, 0:1, :], epochs=10, batch_size=batch_size, validation_data=(X_test, y_test[:, 0:1, :]))
+    model.fit(X_train, y_train[:, 0:1, :], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:, 0:1, :]))
     #model.fit(X_train, y_train[:,0,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:,0,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1]))
     #model.fit(X_train, y_train[:,0,:], epochs=100, batch_size=batch_size, validation_data=(X_test, y_test[:,0,:]), callbacks=[
     #    TensorBoard(log_dir=run_dir, histogram_freq=50, write_graph=True, write_grads=True, update_freq='epoch'),
@@ -123,4 +125,4 @@ for num_units in HP_NUM_UNITS.domain.values:
                     print('--- Starting trial: %s' % run_name)
                     print({h.name: hparams[h] for h in hparams})
                     predicted = run('logs/hparam_tuning/' + run_name, hparams)
-                    pd.DataFrame(np.reshape(predicted, ((end_test-end_train),n_outputs))).to_csv('pred' +run_name+'.csv')
+                    pd.DataFrame(sc.inverse_transform(np.reshape(predicted, ((end_test-end_train-n_windows)*n_windows,n_outputs)))).to_csv('pred' +run_name+'.csv')
