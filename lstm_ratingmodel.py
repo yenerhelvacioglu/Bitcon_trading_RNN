@@ -83,7 +83,7 @@ HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([100]))
 HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.1,0.11))
 HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['rmsprop']))
 HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(1))))
-HP_WINDOW = hp.HParam('window_size',hp.Discrete([12]))
+HP_WINDOW = hp.HParam('window_size',hp.Discrete([6]))
 #HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(n_outputs-1))))
 METRIC_ACCURACY = 'accuracy'
 
@@ -106,11 +106,11 @@ def train_test_model(run_dir,hparams):
     hp.hparams(hparams)
     [X_train, y_train] = create_data(data_scaled=data, start_train=hparams[HP_WINDOW], end_train=end_train, n_windows=hparams[HP_WINDOW])
     [X_test, y_test] = create_data(data_scaled=data, start_train=end_train, end_train=end_test-hparams[HP_WINDOW], n_windows=hparams[HP_WINDOW])
-    pd.DataFrame(X_sc.inverse_transform(np.reshape(X_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (X_test.shape[0],X_test.shape[2])))).to_csv('X.csv')
-    pd.DataFrame(y_sc.inverse_transform(np.reshape(y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (y_test.shape[0],y_test.shape[2])))).to_csv('y.csv')
+    pd.DataFrame(X_sc.inverse_transform(np.reshape(X_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (X_test.shape[0],X_test.shape[2])))).to_csv('X_'+ hparams[HP_WINDOW] +'.csv')
+    pd.DataFrame(y_sc.inverse_transform(np.reshape(y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (y_test.shape[0],y_test.shape[2])))).to_csv('y_'+ hparams[HP_WINDOW] +'.csv')
     tf.compat.v1.keras.backend.clear_session()
     model = Sequential()
-    model.add(LSTM(hparams[HP_NUM_UNITS], unit_forget_bias=True, return_sequences=True ,input_shape=(hparams[HP_WINDOW], n_inputs) ,activation='tanh' ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT]))
+    model.add(LSTM(hparams[HP_NUM_UNITS], unit_forget_bias=True, return_sequences=False ,input_shape=(hparams[HP_WINDOW], n_inputs) ,activation='tanh' ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT]))
     #model.add(LSTM(hparams[HP_NUM_UNITS], activation='tanh' ,return_sequences=False ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
     model.add(Dense(units=n_outputs, activation='linear'))
     #weights = np.full([1,1,n_outputs],1)
@@ -118,12 +118,12 @@ def train_test_model(run_dir,hparams):
     model.compile(optimizer=hparams[HP_OPTIMIZER], loss='mse') #get_weighted_loss(weights=weights)) # metrics=['mae'])
     model.summary()
     #model.load_weights('model.h5')
-    model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test))
-    #model.fit(X_train, y_train[:, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], :], epochs=10, validation_data=(X_test, y_test[:, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], :]))
+    #model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test))
+    #model.fit(X_train, y_train[:, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0], epochs=1, validation_data=(X_test, y_test[:, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0]))
     #model.fit(X_train, y_train[:,0,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:,0,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1]))
-    #model.fit(X_train, y_train[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], epochs=10, batch_size=batch_size, validation_data=(X_test, y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:]), callbacks=[
-    #    TensorBoard(log_dir=run_dir, histogram_freq=50, write_graph=True, write_grads=True, update_freq='epoch'),
-    #    hp.KerasCallback(writer=run_dir, hparams=hparams)])
+    model.fit(X_train, y_train[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0], epochs=50, batch_size=batch_size, validation_data=(X_test, y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0]), callbacks=[
+        TensorBoard(log_dir=run_dir, histogram_freq=10, write_graph=True, write_grads=True, update_freq='epoch'),
+        hp.KerasCallback(writer=run_dir, hparams=hparams)])
     #model.save_weights('model.h5')
     #X_test_extended = X_test
     predicted = model.predict(X_test)
@@ -155,4 +155,5 @@ for num_units in HP_NUM_UNITS.domain.values:
                     predicted = run('logs/hparam_tuning/' + run_name, hparams)
                     #pd.DataFrame(sc.inverse_transform(np.reshape(predicted, ((end_test-end_train-n_windows)*n_windows,n_outputs)))).to_csv('pred' +run_name+'.csv')
                     #pd.DataFrame(np.reshape(predicted, ((end_test-end_train-n_windows)*n_windows,n_outputs))).to_csv('pred' +run_name+'.csv')
-                    pd.DataFrame(y_sc.inverse_transform(np.reshape(predicted[:,n_windows-1:n_windows,:],(predicted.shape[0],predicted.shape[2])))).to_csv('pred' + run_name + '.csv')
+                    #pd.DataFrame(y_sc.inverse_transform(np.reshape(predicted[:,n_windows-1:n_windows,:],(predicted.shape[0],predicted.shape[2])))).to_csv('pred' + run_name + '.csv')
+                    pd.DataFrame(y_sc.inverse_transform(predicted)).to_csv('pred' + run_name + n_windows +'.csv')
