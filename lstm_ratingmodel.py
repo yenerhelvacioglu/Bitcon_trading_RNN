@@ -130,7 +130,7 @@ def train_test_model(run_dir,hparams):
 
     tf.compat.v1.keras.backend.clear_session()
     model = Sequential()
-    model.add(LSTM(hparams[HP_NUM_UNITS], unit_forget_bias=True, return_sequences=True ,input_shape=(hparams[HP_WINDOW], n_inputs) ,activation='tanh' ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT]))
+    model.add(LSTM(hparams[HP_NUM_UNITS], unit_forget_bias=True, return_sequences=False ,input_shape=(hparams[HP_WINDOW], n_inputs) ,activation='tanh' ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT]))
     #model.add(LSTM(hparams[HP_NUM_UNITS], unit_forget_bias=True, activation='tanh' ,return_sequences=True ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
     #model.add(LSTM(hparams[HP_NUM_UNITS], unit_forget_bias=True, activation='tanh', return_sequences=False,kernel_initializer='TruncatedNormal', bias_initializer=initializers.Constant(value=0.1),dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
     model.add(Dense(units=n_outputs, activation='linear'))
@@ -139,9 +139,15 @@ def train_test_model(run_dir,hparams):
     model.compile(optimizer=hparams[HP_OPTIMIZER], loss='mse') #get_weighted_loss(weights=weights)) # metrics=['mae'])
     model.summary()
     #model.load_weights('model.h5')
-    model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test), batch_size=batch_size)
-    #model.fit(X_train, y_train[:, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0], epochs=1, validation_data=(X_test, y_test[:, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0]))
-    #model.fit(X_train, y_train[:,0,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:,0,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1]))
+
+    #use this if return_sequences = True
+    #model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test), batch_size=batch_size)
+    #model.fit(X_train, y_train, epochs=50, batch_size=batch_size, validation_data=(X_test, y_test), callbacks=[
+    #    TensorBoard(log_dir=run_dir, histogram_freq=10, write_graph=True, write_grads=True, update_freq='epoch'),
+    #    hp.KerasCallback(writer=run_dir, hparams=hparams)])
+
+    # use this if return_sequences = False
+    model.fit(X_train, y_train[:, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0], epochs=10, validation_data=(X_test, y_test[:, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0]))
     #model.fit(X_train, y_train[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0], epochs=50, batch_size=batch_size, validation_data=(X_test, y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0]), callbacks=[
     #    TensorBoard(log_dir=run_dir, histogram_freq=10, write_graph=True, write_grads=True, update_freq='epoch'),
     #    hp.KerasCallback(writer=run_dir, hparams=hparams)])
@@ -161,17 +167,23 @@ def train_test_model(run_dir,hparams):
     pd.DataFrame(X_test_inversed).to_csv('X_'+ str(hparams[HP_WINDOW]) +'.csv')
     pd.DataFrame(y_test_inversed).to_csv('y_'+ str(hparams[HP_WINDOW]) +'.csv')
 
-    predicted_inversed = np.around(y_sc.inverse_transform(predicted[:, :, 0]))
+    #use this if return_sequences = True
+    #predicted_inversed = np.around(y_sc.inverse_transform(predicted[:, :, 0]))
+    #pd.DataFrame(predicted_inversed).to_csv('pred' + run_dir[19:34] + '_' + str(hparams[HP_WINDOW]) + '.csv')
+
+    #use this if return_sequences = False
+    predicted_inversed = np.around(y_sc.inverse_transform(predicted))
+    pd.DataFrame(predicted_inversed).to_csv('pred' + run_dir[19:34] + '_' + str(hparams[HP_WINDOW]) + '.csv')
+
     # pd.DataFrame(sc.inverse_transform(np.reshape(predicted, ((end_test-end_train-n_windows)*n_windows,n_outputs)))).to_csv('pred' +run_name+'.csv')
     # pd.DataFrame(np.reshape(predicted, ((end_test-end_train-n_windows)*n_windows,n_outputs))).to_csv('pred' +run_name+'.csv')
     # pd.DataFrame(y_sc.inverse_transform(np.reshape(predicted[:,n_windows-1:n_windows,:],(predicted.shape[0],predicted.shape[2])))).to_csv('pred' + run_name + '.csv')
-    pd.DataFrame(predicted_inversed).to_csv('pred' + run_dir[19:34] + '_' + str(hparams[HP_WINDOW]) + '.csv')
 
     change_actual = (X_test_inversed == np.mean(y_test_inversed, 1))
     change_predicted = (X_test_inversed == np.mean(predicted_inversed, 1))
 
     result = (change_actual == change_predicted)
-    print('rating change prediction accuracy =' + str(np.round(np.bincount(result)[1]/np.bincount(result)[0],4)))
+    print('rating change predicted vs not: ' + str(np.bincount(result)[1]) + ' vs ' + str(np.bincount(result)[0]))
 
     return predicted
 
