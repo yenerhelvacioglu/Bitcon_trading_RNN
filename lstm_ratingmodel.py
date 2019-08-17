@@ -24,9 +24,9 @@ from keras.utils import to_categorical
 
 # Part 1 - Data Preprocessing
 
-n_inputs = 14 # total number of inputs minus 1 as it starts from 0
+n_inputs = 14-2 # total number of inputs minus 1 as it starts from 0
 n_outputs = 1
-n_company = 58
+n_company = 58-6
 start_train = 0
 end_train = 96
 end_test = 126
@@ -36,12 +36,12 @@ batch_size = 12
 data = pd.read_csv('rating_data.csv', index_col=0)
 
 Rating = data.values[:,0:n_company]
-Gross_Margin = data.values[:,1624:1624+n_company]
+Gross_Margin = data.values[:,1624:1624+n_company] #remove
 Operating_Margin = data.values[:,2494:2494+n_company]
 Net_Profit_Margin = data.values[:,2320:2320+n_company]
 Return_on_Equity = data.values[:,2842:2842+n_company]
 Return_on_Assets = data.values[:,2784:2784+n_company]
-Current_Ratio = data.values[:,928:928+n_company]
+Current_Ratio = data.values[:,928:928+n_company] #remove
 Liabilities_to_Equity_Ratio = data.values[:,1856:1856+n_company]
 Debt_to_Assets_Ratio = data.values[:,986:986+n_company]
 EV_EBITDA = data.values[:,1277:1277+n_company]
@@ -50,8 +50,28 @@ Book_to_Market = data.values[:,290:290+n_company]
 Operating_Income_EV = data.values[:,2436:2436+n_company]
 Share_Price = data.values[:,3074:3074+n_company]
 
+# Rating[Rating == 3 ] = 2
+# Rating[Rating == 4 ] = 2
+# Rating[Rating == 5 ] = 3
+# Rating[Rating == 6 ] = 3
+# Rating[Rating == 7 ] = 3
+# Rating[Rating == 8 ] = 4
+# Rating[Rating == 9 ] = 4
+# Rating[Rating == 10 ] = 4
+# Rating[Rating == 11 ] = 5
+# Rating[Rating == 12 ] = 5
+# Rating[Rating == 13 ] = 5
+# Rating[Rating == 14 ] = 6
+# Rating[Rating == 15 ] = 6
+# Rating[Rating == 16 ] = 6
+# Rating[Rating >= 17 ] = 7
+
 #data = np.concatenate((Rating,Gross_Margin, Operating_Margin, Net_Profit_Margin, Return_on_Equity, Return_on_Assets, Current_Ratio, Liabilities_to_Equity_Ratio, Debt_to_Assets_Ratio, EV_EBITDA, EV_Sales, Book_to_Market, Operating_Income_EV, Share_Price),axis=1)
 data = [Rating,Gross_Margin, Operating_Margin, Net_Profit_Margin, Return_on_Equity, Return_on_Assets, Current_Ratio, Liabilities_to_Equity_Ratio, Debt_to_Assets_Ratio, EV_EBITDA, EV_Sales, Book_to_Market, Operating_Income_EV, Share_Price]
+
+data = np.delete(data,[1,6],axis=0)
+data = np.delete(data,[1,34,45,50,51,57],axis=2)
+
 data = np.transpose(data)
 # Feature Scaling
 #sc = MinMaxScaler(feature_range = (0, 1))
@@ -83,7 +103,7 @@ HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([100]))
 HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.1,0.11))
 HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['rmsprop']))
 HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(1))))
-HP_WINDOW = hp.HParam('window_size',hp.Discrete([6]))
+HP_WINDOW = hp.HParam('window_size',hp.Discrete([3]))
 #HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(n_outputs-1))))
 METRIC_ACCURACY = 'accuracy'
 
@@ -103,27 +123,28 @@ def get_weighted_loss(weights):
     return weighted_loss
 
 def train_test_model(run_dir,hparams):
+
     hp.hparams(hparams)
     [X_train, y_train] = create_data(data_scaled=data, start_train=hparams[HP_WINDOW], end_train=end_train, n_windows=hparams[HP_WINDOW])
     [X_test, y_test] = create_data(data_scaled=data, start_train=end_train, end_train=end_test-hparams[HP_WINDOW], n_windows=hparams[HP_WINDOW])
-    pd.DataFrame(X_sc.inverse_transform(np.reshape(X_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (X_test.shape[0],X_test.shape[2])))).to_csv('X_'+ hparams[HP_WINDOW] +'.csv')
-    pd.DataFrame(y_sc.inverse_transform(np.reshape(y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (y_test.shape[0],y_test.shape[2])))).to_csv('y_'+ hparams[HP_WINDOW] +'.csv')
+
     tf.compat.v1.keras.backend.clear_session()
     model = Sequential()
-    model.add(LSTM(hparams[HP_NUM_UNITS], unit_forget_bias=True, return_sequences=False ,input_shape=(hparams[HP_WINDOW], n_inputs) ,activation='tanh' ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT]))
-    #model.add(LSTM(hparams[HP_NUM_UNITS], activation='tanh' ,return_sequences=False ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
+    model.add(LSTM(hparams[HP_NUM_UNITS], unit_forget_bias=True, return_sequences=True ,input_shape=(hparams[HP_WINDOW], n_inputs) ,activation='tanh' ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT]))
+    #model.add(LSTM(hparams[HP_NUM_UNITS], unit_forget_bias=True, activation='tanh' ,return_sequences=True ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
+    #model.add(LSTM(hparams[HP_NUM_UNITS], unit_forget_bias=True, activation='tanh', return_sequences=False,kernel_initializer='TruncatedNormal', bias_initializer=initializers.Constant(value=0.1),dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
     model.add(Dense(units=n_outputs, activation='linear'))
     #weights = np.full([1,1,n_outputs],1)
     #weights[0,0,0:57] = 1
     model.compile(optimizer=hparams[HP_OPTIMIZER], loss='mse') #get_weighted_loss(weights=weights)) # metrics=['mae'])
     model.summary()
     #model.load_weights('model.h5')
-    #model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test))
+    model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test), batch_size=batch_size)
     #model.fit(X_train, y_train[:, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0], epochs=1, validation_data=(X_test, y_test[:, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0]))
     #model.fit(X_train, y_train[:,0,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:,0,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1]))
-    model.fit(X_train, y_train[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0], epochs=50, batch_size=batch_size, validation_data=(X_test, y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0]), callbacks=[
-        TensorBoard(log_dir=run_dir, histogram_freq=10, write_graph=True, write_grads=True, update_freq='epoch'),
-        hp.KerasCallback(writer=run_dir, hparams=hparams)])
+    #model.fit(X_train, y_train[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0], epochs=50, batch_size=batch_size, validation_data=(X_test, y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0]), callbacks=[
+    #    TensorBoard(log_dir=run_dir, histogram_freq=10, write_graph=True, write_grads=True, update_freq='epoch'),
+    #    hp.KerasCallback(writer=run_dir, hparams=hparams)])
     #model.save_weights('model.h5')
     #X_test_extended = X_test
     predicted = model.predict(X_test)
@@ -132,6 +153,25 @@ def train_test_model(run_dir,hparams):
     #     if hparams[HP_WINDOW] != 1:
     #         X_test_extended = np.concatenate((X_test_extended[:, -hparams[HP_WINDOW]+1:, :], np.reshape(predicted, (X_test.shape[0], 1, X_test.shape[2]))), axis=1)
     #predicted = X_test_extended
+
+    X_test_inversed = np.around(X_sc.inverse_transform(np.reshape(X_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:],(X_test.shape[0],X_test.shape[2]))))[:,0]
+    y_test_inversed = np.around(y_sc.inverse_transform(y_test[:, :, 0]))
+    #pd.DataFrame(X_sc.inverse_transform(np.reshape(X_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (X_test.shape[0],X_test.shape[2])))).to_csv('X_'+ str(hparams[HP_WINDOW]) +'.csv')
+    #pd.DataFrame(y_sc.inverse_transform(np.reshape(y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (y_test.shape[0],y_test.shape[2])))).to_csv('y_'+ str(hparams[HP_WINDOW]) +'.csv')
+    pd.DataFrame(X_test_inversed).to_csv('X_'+ str(hparams[HP_WINDOW]) +'.csv')
+    pd.DataFrame(y_test_inversed).to_csv('y_'+ str(hparams[HP_WINDOW]) +'.csv')
+
+    predicted_inversed = np.around(y_sc.inverse_transform(predicted[:, :, 0]))
+    # pd.DataFrame(sc.inverse_transform(np.reshape(predicted, ((end_test-end_train-n_windows)*n_windows,n_outputs)))).to_csv('pred' +run_name+'.csv')
+    # pd.DataFrame(np.reshape(predicted, ((end_test-end_train-n_windows)*n_windows,n_outputs))).to_csv('pred' +run_name+'.csv')
+    # pd.DataFrame(y_sc.inverse_transform(np.reshape(predicted[:,n_windows-1:n_windows,:],(predicted.shape[0],predicted.shape[2])))).to_csv('pred' + run_name + '.csv')
+    pd.DataFrame(predicted_inversed).to_csv('pred' + run_dir[19:34] + '_' + str(hparams[HP_WINDOW]) + '.csv')
+
+    change_actual = (X_test_inversed == np.mean(y_test_inversed, 1))
+    change_predicted = (X_test_inversed == np.mean(predicted_inversed, 1))
+
+    result = (change_actual == change_predicted)
+    print('rating change prediction accuracy =' + str(np.round(np.bincount(result)[1]/np.bincount(result)[0],4)))
 
     return predicted
 
@@ -153,7 +193,3 @@ for num_units in HP_NUM_UNITS.domain.values:
                     print('--- Starting trial: %s' % run_name)
                     print({h.name: hparams[h] for h in hparams})
                     predicted = run('logs/hparam_tuning/' + run_name, hparams)
-                    #pd.DataFrame(sc.inverse_transform(np.reshape(predicted, ((end_test-end_train-n_windows)*n_windows,n_outputs)))).to_csv('pred' +run_name+'.csv')
-                    #pd.DataFrame(np.reshape(predicted, ((end_test-end_train-n_windows)*n_windows,n_outputs))).to_csv('pred' +run_name+'.csv')
-                    #pd.DataFrame(y_sc.inverse_transform(np.reshape(predicted[:,n_windows-1:n_windows,:],(predicted.shape[0],predicted.shape[2])))).to_csv('pred' + run_name + '.csv')
-                    pd.DataFrame(y_sc.inverse_transform(predicted)).to_csv('pred' + run_name + n_windows +'.csv')
