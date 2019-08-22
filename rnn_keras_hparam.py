@@ -95,6 +95,7 @@ def train_test_model(run_dir,hparams):
     [X_train, y_train] = create_data(data_scaled=data_scaled, start_train=start_train, end_train=end_train, n_windows=hparams[HP_WINDOW])
     [X_test, y_test] = create_data(data_scaled=data_scaled, start_train=end_train, end_train=end_test, n_windows=hparams[HP_WINDOW])
     #pd.DataFrame(np.reshape(X_test, (end_test - end_train, n_inputs))).to_csv('X.csv')
+    #pd.DataFrame(np.reshape(y_test, (end_test - end_train, n_outputs))).to_csv('y.csv')
     pd.DataFrame(y_test[:,:,0]).to_csv('y.csv')
     tf.compat.v1.keras.backend.clear_session()
     model = Sequential()
