@@ -24,19 +24,24 @@ from functools import partial
 
 # Part 1 - Data Preprocessing
 
-n_inputs = 1 # total number of inputs minus 1 as it starts from 0
+n_inputs = 40 # total number of inputs minus 1 as it starts from 0
 n_outputs = 1
-start_train = 200
+start_train = 23000
 end_train = 23500
 end_test = 24000
-batch_size = 100
+batch_size = 1000
 
 # Importing the training set
 data = pd.read_csv('5minsData.csv', index_col=0)
+data = data.values
 
-# Feature Scaling
-sc = MinMaxScaler(feature_range = (0, 1))
-data_scaled = sc.fit_transform(data)
+# Feature Scaling if n_inputs=n_outputs
+#sc = MinMaxScaler(feature_range = (0, 1))
+#data_scaled = sc.fit_transform(data)
+
+# Feature Scaling if n_inputs =! n_outputs
+X_sc = MinMaxScaler(feature_range=(0, 1))
+y_sc = MinMaxScaler(feature_range=(0, 1))
 
 #Creating a data structure with n_windows timesteps
 #for non-overlapping data
@@ -53,6 +58,19 @@ data_scaled = sc.fit_transform(data)
 #     return X_train, y_train
 
 #for overlapping data
+# def create_data(data_scaled, start_train ,end_train ,n_windows):
+#     X_train = []
+#     y_train = []
+#     for i in range(start_train, end_train):
+#         X_train.append(data_scaled[i-n_windows:i, 0:n_inputs])
+#         y_train.append(data_scaled[i-n_windows+1:i+1, 0:n_outputs])
+#     X_train, y_train = np.array(X_train), np.array(y_train)
+#     X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], n_inputs))
+#     y_train = np.reshape(y_train, (y_train.shape[0], y_train.shape[1], n_outputs))
+#     print(X_train.shape,y_train.shape)
+#     return X_train, y_train
+
+#This scales the data for x and y and creates overlapping data
 def create_data(data_scaled, start_train ,end_train ,n_windows):
     X_train = []
     y_train = []
@@ -60,10 +78,15 @@ def create_data(data_scaled, start_train ,end_train ,n_windows):
         X_train.append(data_scaled[i-n_windows:i, 0:n_inputs])
         y_train.append(data_scaled[i-n_windows+1:i+1, 0:n_outputs])
     X_train, y_train = np.array(X_train), np.array(y_train)
-    X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], n_inputs))
-    y_train = np.reshape(y_train, (y_train.shape[0], y_train.shape[1], n_outputs))
-    print(X_train.shape,y_train.shape)
-    return X_train, y_train
+    X_train_scaled = X_sc.fit_transform(np.reshape(X_train, (X_train.shape[0]* X_train.shape[1], X_train.shape[2])))
+    y_train_scaled = y_sc.fit_transform(np.reshape(y_train, (y_train.shape[0]* y_train.shape[1], y_train.shape[2])))
+    X_train_scaled = np.reshape(X_train_scaled, (X_train.shape[0], X_train.shape[1], X_train.shape[2]))
+    y_train_scaled = np.reshape(y_train_scaled, (y_train.shape[0], y_train.shape[1], y_train.shape[2]))
+    print(X_train_scaled.shape,y_train_scaled.shape)
+    # X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], n_inputs))
+    # y_train = np.reshape(y_train, (y_train.shape[0], y_train.shape[1], n_outputs))
+    # print(X_train.shape,y_train.shape)
+    return X_train_scaled, y_train_scaled
 
 # Part 2 - Building the RNN
 
@@ -92,33 +115,81 @@ def get_weighted_loss(weights):
 
 def train_test_model(run_dir,hparams):
     hp.hparams(hparams)
-    [X_train, y_train] = create_data(data_scaled=data_scaled, start_train=start_train, end_train=end_train, n_windows=hparams[HP_WINDOW])
-    [X_test, y_test] = create_data(data_scaled=data_scaled, start_train=end_train, end_train=end_test, n_windows=hparams[HP_WINDOW])
-    #pd.DataFrame(np.reshape(X_test, (end_test - end_train, n_inputs))).to_csv('X.csv')
-    #pd.DataFrame(np.reshape(y_test, (end_test - end_train, n_outputs))).to_csv('y.csv')
-    pd.DataFrame(y_test[:,:,0]).to_csv('y.csv')
+    # Create data after scaling
+    #[X_train, y_train] = create_data(data_scaled=data_scaled, start_train=start_train, end_train=end_train, n_windows=hparams[HP_WINDOW])
+    #[X_test, y_test] = create_data(data_scaled=data_scaled, start_train=end_train, end_train=end_test, n_windows=hparams[HP_WINDOW])
+    # Create data before scaling
+    [X_train, y_train] = create_data(data_scaled=data, start_train=hparams[HP_WINDOW], end_train=end_train, n_windows=hparams[HP_WINDOW])
+    [X_test, y_test] = create_data(data_scaled=data, start_train=end_train, end_train=end_test, n_windows=hparams[HP_WINDOW])
+
     tf.compat.v1.keras.backend.clear_session()
     model = Sequential()
-    model.add(LSTM(hparams[HP_NUM_UNITS], return_sequences=True ,input_shape=(hparams[HP_WINDOW], n_inputs) ,activation='tanh' ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT]))
-    model.add(LSTM(hparams[HP_NUM_UNITS], activation='tanh' ,return_sequences=False ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
+    model.add(LSTM(hparams[HP_NUM_UNITS], return_sequences=False ,input_shape=(hparams[HP_WINDOW], n_inputs) ,activation='tanh' ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT]))
+    #model.add(LSTM(hparams[HP_NUM_UNITS], activation='tanh' ,return_sequences=False ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
     model.add(Dense(units=n_outputs, activation='linear'))
-    weights = np.full([1,1,n_outputs],0)
-    weights[0,0,hparams[HP_OUTPUT]] = 1
+    #weights = np.full([1,1,n_outputs],0)
+    #weights[0,0,hparams[HP_OUTPUT]] = 1
     model.compile(optimizer=hparams[HP_OPTIMIZER], loss='mse') #get_weighted_loss(weights=weights)) # metrics=['mae'])
     model.summary()
     #model.load_weights('model.h5')
+
+    # use this when using calling n_inputs = n_outputs
     #model.fit(X_train, y_train[:, 0, :], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:, 0, :]))
+    #model.fit(X_train, y_train, epochs=1, batch_size=batch_size, validation_data=(X_test, y_test))
     #model.fit(X_train, y_train[:,0,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:,0,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1]))
-    model.fit(X_train, y_train[:,0,:], epochs=50, batch_size=batch_size, validation_data=(X_test, y_test[:,0,:]), callbacks=[
-          TensorBoard(log_dir=run_dir, histogram_freq=10, write_graph=True, write_grads=True, update_freq='epoch'),
-          hp.KerasCallback(writer=run_dir, hparams=hparams)])
-    model.save_weights('model.h5')
+    # model.fit(X_train, y_train[:,0,:], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:,0,:]), callbacks=[
+    #      TensorBoard(log_dir=run_dir, histogram_freq=10, write_graph=True, write_grads=True, update_freq='epoch'),
+    #      hp.KerasCallback(writer=run_dir, hparams=hparams)])
+
+    #use this if return_sequences = True
+    #model.fit(X_train, y_train, epochs=1, validation_data=(X_test, y_test), batch_size=batch_size)
+    #model.fit(X_train, y_train, epochs=50, batch_size=batch_size, validation_data=(X_test, y_test), callbacks=[
+    #    TensorBoard(log_dir=run_dir, histogram_freq=10, write_graph=True, write_grads=True, update_freq='epoch'),
+    #    hp.KerasCallback(writer=run_dir, hparams=hparams)])
+
+    # use this if return_sequences = False
+    model.fit(X_train, y_train[:, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0], epochs=1, validation_data=(X_test, y_test[:, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0]))
+    #model.fit(X_train, y_train[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0], epochs=50, batch_size=batch_size, validation_data=(X_test, y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0]), callbacks=[
+    #    TensorBoard(log_dir=run_dir, histogram_freq=10, write_graph=True, write_grads=True, update_freq='epoch'),
+    #    hp.KerasCallback(writer=run_dir, hparams=hparams)])
+
+    #model.save_weights('model.h5')
+
+    # use this when using calling n_inputs = n_outputs
+    # X_test_extended = X_test
+    # for iteration in range(hparams[HP_WINDOW]):
+    #     predicted = model.predict(X_test_extended)
+    #     X_test_extended = np.concatenate((X_test_extended[:, -hparams[HP_WINDOW]+1:, :], np.reshape(predicted, (X_test.shape[0], 1, X_test.shape[2]))), axis=1)
+    #
+    # predicted = X_test_extended
+
+    # use this when n_inputs =! n_outputs
+    # predicted = model.predict(X_test)
+
+    # use this when n_inputs =! n_outputs but you want to interpolate rest of the X
     X_test_extended = X_test
     for iteration in range(hparams[HP_WINDOW]):
         predicted = model.predict(X_test_extended)
-        X_test_extended = np.concatenate((X_test_extended[:, -hparams[HP_WINDOW]+1:, :], np.reshape(predicted, (X_test.shape[0], 1, X_test.shape[2]))), axis=1)
+        X_test_extended = np.concatenate((X_test_extended[:, -hparams[HP_WINDOW]+1:, :], np.concatenate((np.reshape(predicted,(predicted.shape[0],predicted.shape[1],1)),X_test[:, -1:, 1:]), axis=2)  ), axis=1)
 
     predicted = X_test_extended
+
+    X_test_inversed = np.around(X_sc.inverse_transform(np.reshape(X_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:],(X_test.shape[0],X_test.shape[2]))))[:,0]
+    y_test_inversed = np.around(y_sc.inverse_transform(y_test[:, :, 0]))
+    #pd.DataFrame(X_sc.inverse_transform(np.reshape(X_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (X_test.shape[0],X_test.shape[2])))).to_csv('X_'+ str(hparams[HP_WINDOW]) +'.csv')
+    #pd.DataFrame(y_sc.inverse_transform(np.reshape(y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (y_test.shape[0],y_test.shape[2])))).to_csv('y_'+ str(hparams[HP_WINDOW]) +'.csv')
+    pd.DataFrame(X_test_inversed).to_csv('X_'+ str(hparams[HP_WINDOW]) +'.csv')
+    pd.DataFrame(y_test_inversed).to_csv('y_'+ str(hparams[HP_WINDOW]) +'.csv')
+
+    #use this if return_sequences = True
+    predicted_inversed = np.around(y_sc.inverse_transform(predicted[:, :, 0]))
+    pd.DataFrame(predicted_inversed).to_csv('pred' + run_dir[19:34] + '_' + str(hparams[HP_WINDOW]) + '.csv')
+    pd.DataFrame(np.reshape(predicted_inversed[0::n_windows], (end_test - end_train))).to_csv('pred' + run_dir[19:34] + '.csv')
+
+    #use this if return_sequences = False
+    #predicted_inversed = np.around(y_sc.inverse_transform(predicted))
+    #pd.DataFrame(predicted_inversed).to_csv('pred' + run_dir[19:34] + '_' + str(hparams[HP_WINDOW]) + '.csv')
+
     return predicted
 
 # Part 3 - Running the model
@@ -138,7 +209,5 @@ for num_units in HP_NUM_UNITS.domain.values:
                     run_name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
                     print('--- Starting trial: %s' % run_name)
                     print({h.name: hparams[h] for h in hparams})
-                    run_dir = os.path.join("logs", run_name)
+                    run_dir = os.path.join("logs/hparam_tuning/", run_name)
                     predicted = run(run_dir, hparams)
-                    #pd.DataFrame(np.reshape(predicted, ((end_test-end_train),n_outputs))).to_csv('pred' +run_name+'.csv')
-                    pd.DataFrame(np.reshape(predicted[0::n_windows,:,0],(end_test-end_train))).to_csv('pred' +run_name+'.csv')
