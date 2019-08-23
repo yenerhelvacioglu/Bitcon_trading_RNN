@@ -24,9 +24,9 @@ from functools import partial
 
 # Part 1 - Data Preprocessing
 
-n_inputs = 40 # total number of inputs minus 1 as it starts from 0
-n_outputs = 40
-start_train = 20000
+n_inputs = 1 # total number of inputs minus 1 as it starts from 0
+n_outputs = 1
+start_train = 200
 end_train = 23500
 end_test = 24000
 batch_size = 100
@@ -99,19 +99,19 @@ def train_test_model(run_dir,hparams):
     pd.DataFrame(y_test[:,:,0]).to_csv('y.csv')
     tf.compat.v1.keras.backend.clear_session()
     model = Sequential()
-    model.add(LSTM(hparams[HP_NUM_UNITS], return_sequences=False ,input_shape=(hparams[HP_WINDOW], n_inputs) ,activation='tanh' ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT]))
-    #model.add(LSTM(hparams[HP_NUM_UNITS], activation='tanh' ,return_sequences=False ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
+    model.add(LSTM(hparams[HP_NUM_UNITS], return_sequences=True ,input_shape=(hparams[HP_WINDOW], n_inputs) ,activation='tanh' ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT]))
+    model.add(LSTM(hparams[HP_NUM_UNITS], activation='tanh' ,return_sequences=False ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
     model.add(Dense(units=n_outputs, activation='linear'))
-    weights = np.full([1,1,n_outputs],1)
+    weights = np.full([1,1,n_outputs],0)
     weights[0,0,hparams[HP_OUTPUT]] = 1
-    model.compile(optimizer=hparams[HP_OPTIMIZER], loss=get_weighted_loss(weights=weights)) # metrics=['mae'])
+    model.compile(optimizer=hparams[HP_OPTIMIZER], loss='mse') #get_weighted_loss(weights=weights)) # metrics=['mae'])
     model.summary()
     #model.load_weights('model.h5')
-    model.fit(X_train, y_train[:, 0, :], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:, 0, :]))
+    #model.fit(X_train, y_train[:, 0, :], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:, 0, :]))
     #model.fit(X_train, y_train[:,0,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:,0,hparams[HP_OUTPUT]:hparams[HP_OUTPUT]+1]))
-    # model.fit(X_train, y_train[:,0,:], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:,0,:]), callbacks=[
-    #      TensorBoard(log_dir=run_dir, histogram_freq=10, write_graph=True, write_grads=True, update_freq='epoch'),
-    #      hp.KerasCallback(writer=run_dir, hparams=hparams)])
+    model.fit(X_train, y_train[:,0,:], epochs=50, batch_size=batch_size, validation_data=(X_test, y_test[:,0,:]), callbacks=[
+          TensorBoard(log_dir=run_dir, histogram_freq=10, write_graph=True, write_grads=True, update_freq='epoch'),
+          hp.KerasCallback(writer=run_dir, hparams=hparams)])
     model.save_weights('model.h5')
     X_test_extended = X_test
     for iteration in range(hparams[HP_WINDOW]):
@@ -141,4 +141,4 @@ for num_units in HP_NUM_UNITS.domain.values:
                     run_dir = os.path.join("logs", run_name)
                     predicted = run(run_dir, hparams)
                     #pd.DataFrame(np.reshape(predicted, ((end_test-end_train),n_outputs))).to_csv('pred' +run_name+'.csv')
-                    pd.DataFrame(predicted[:,:,0]).to_csv('pred' +run_name+'.csv')
+                    pd.DataFrame(np.reshape(predicted[0::n_windows,:,0],(end_test-end_train))).to_csv('pred' +run_name+'.csv')
