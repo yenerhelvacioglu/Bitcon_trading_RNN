@@ -24,9 +24,9 @@ from functools import partial
 
 # Part 1 - Data Preprocessing
 
-n_inputs = 3 # total number of inputs minus 1 as it starts from 0
+n_inputs = 20 # total number of inputs minus 1 as it starts from 0
 #n_outputs = 1
-start_train = 23000
+start_train = 50
 end_train = 23500
 end_test = 24000
 batch_size = 1000
@@ -89,8 +89,8 @@ def create_data(data_scaled, start_train ,end_train ,n_windows,n_outputs):
 HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([100]))
 HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.1,0.11))
 HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['rmsprop']))
-HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(0,3))))
-HP_WINDOW = hp.HParam('window_size',hp.Discrete([2]))
+HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(0,20))))
+HP_WINDOW = hp.HParam('window_size',hp.Discrete([50]))
 #HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(n_outputs-1))))
 METRIC_ACCURACY = 'loss'
 
@@ -166,8 +166,6 @@ def predict_model(hparams):
     # use this when n_inputs =! n_outputs
     # predicted = model.predict(X_test)
 
-
-
     # use this when n_inputs =! n_outputs but you want to interpolate rest of the X
     [X_test, y_test] = create_data(data_scaled=data, start_train=end_train, end_train=end_test, n_windows=hparams[HP_WINDOW], n_outputs=hparams[HP_OUTPUT])
 
@@ -187,7 +185,7 @@ def predict_model(hparams):
 
     #X_test_inversed = np.around(X_sc.inverse_transform(np.reshape(X_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:],(X_test.shape[0],X_test.shape[2]))))[:,0]
     #y_test_inversed = np.around(y_sc.inverse_transform(y_test[:, :, 0]))
-    #pd.DataFrame(X_sc.inverse_transform(np.reshape(X_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (X_test.shape[0],X_test.shape[2])))).to_csv('X_'+ str(hparams[HP_WINDOW]) +'.csv')
+    pd.DataFrame(X_sc.inverse_transform(np.reshape(X_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (X_test.shape[0],X_test.shape[2])))).to_csv('X_'+ str(hparams[HP_WINDOW]) +'.csv')
     #pd.DataFrame(y_sc.inverse_transform(np.reshape(y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (y_test.shape[0],y_test.shape[2])))).to_csv('y_'+ str(hparams[HP_WINDOW]) +'.csv')
     #pd.DataFrame(X_test_inversed).to_csv('X_'+ str(hparams[HP_WINDOW]) +'.csv')
     #pd.DataFrame(y_test_inversed).to_csv('y_'+ str(hparams[HP_WINDOW]) +'.csv')
@@ -226,4 +224,5 @@ for num_units in HP_NUM_UNITS.domain.values:
                     # [X_test, y_test] = create_data(data_scaled=data_scaled, start_train=end_train, end_train=end_test, n_windows=hparams[HP_WINDOW])
 
                     #train_model(run_dir, hparams)
-                    predict_model(hparams)
+
+predict_model({HP_NUM_UNITS: 100, HP_DROPOUT: round(0.1,1), HP_OPTIMIZER: 'rmsprop', HP_OUTPUT: 20, HP_WINDOW: 50,})
