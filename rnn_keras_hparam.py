@@ -24,10 +24,10 @@ from functools import partial
 
 # Part 1 - Data Preprocessing
 
-start_train = 23000
+start_train = 50
 end_train = 23500
 end_test = 24000
-#batch_size = 1000
+batch_size = 1000
 
 # Importing the training set
 data = pd.read_csv('5minsData.csv', index_col=0)
@@ -59,8 +59,8 @@ HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([100]))
 HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.1,0.11))
 HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['rmsprop']))
 HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(0,3))))
-HP_WINDOW = hp.HParam('window_size',hp.Discrete([4]))
-HP_HORIZON = hp.HParam('horizon_size',hp.Discrete([2]))
+HP_WINDOW = hp.HParam('window_size',hp.Discrete([50]))
+HP_HORIZON = hp.HParam('horizon_size',hp.Discrete([25]))
 #HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(n_outputs-1))))
 METRIC_ACCURACY = 'loss'
 
@@ -94,8 +94,10 @@ def train_model(run_dir,hparams):
 def test_model(hparams):
 
     [X_test, y_test] = create_data(data_unscaled=data, start_train=end_train, end_train=end_test, n_windows=hparams[HP_WINDOW], n_outputs=0)
-    X_test_extended = X_test
+    pd.DataFrame(X_sc.inverse_transform(np.reshape(X_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (X_test.shape[0],X_test.shape[2])))).to_csv('X_'+ str(hparams[HP_WINDOW]) +'.csv')
+    pd.DataFrame(y_sc.inverse_transform(np.reshape(y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (y_test.shape[0],y_test.shape[2])))).to_csv('y_'+ str(hparams[HP_WINDOW]) +'.csv')
 
+    X_test_extended = X_test
     for iteration_w in range(hparams[HP_WINDOW]):
         predicted = []
         for iteration_o in range(hparams[HP_OUTPUT]):
@@ -109,9 +111,8 @@ def test_model(hparams):
 
     predicted = X_test_extended
 
-    pd.DataFrame(X_sc.inverse_transform(np.reshape(predicted[::hparams[HP_HORIZON], :hparams[HP_HORIZON], :], (predicted.shape[0], predicted.shape[2])))).to_csv('pred.csv')
-    pd.DataFrame(X_sc.inverse_transform(np.reshape(X_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (X_test.shape[0],X_test.shape[2])))).to_csv('X_'+ str(hparams[HP_WINDOW]) +'.csv')
-    pd.DataFrame(y_sc.inverse_transform(np.reshape(y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (y_test.shape[0],y_test.shape[2])))).to_csv('y_'+ str(hparams[HP_WINDOW]) +'.csv')
+    for iteration_h in hparams[HP_HORIZON]:
+        pd.DataFrame(X_sc.inverse_transform(np.reshape(predicted[::iteration_h, :iteration_h, :], (predicted.shape[0], predicted.shape[2])))).to_csv('pred_' + str(iteration_h) + '.csv')
 
     return 0
 
@@ -133,6 +134,6 @@ for num_units in HP_NUM_UNITS.domain.values:
                     print('--- Starting trial: %s' % run_name)
                     print({h.name: hparams[h] for h in hparams})
                     run_dir = os.path.join("logs/hparam_tuning/", run_name)
-                    train_model(run_dir, hparams)
+                    #train_model(run_dir, hparams)
 
-test_model({HP_NUM_UNITS: 100, HP_DROPOUT: round(0.1,1), HP_OPTIMIZER: 'rmsprop', HP_OUTPUT: 3, HP_WINDOW: 4, HP_HORIZON:2})
+test_model({HP_NUM_UNITS: 100, HP_DROPOUT: round(0.1,1), HP_OPTIMIZER: 'rmsprop', HP_OUTPUT: 3, HP_WINDOW: 50, HP_HORIZON:[1,5,10,25,50]})
