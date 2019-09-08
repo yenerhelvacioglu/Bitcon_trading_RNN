@@ -11,7 +11,7 @@ from sklearn.preprocessing import MinMaxScaler
 # Importing the Keras libraries and packages
 from tensorflow.keras.models import Sequential, load_model
 #from tensorflow.keras.models import load_model
-from tensorflow.keras.layers import Dense, LSTM, Dropout, Input
+from tensorflow.keras.layers import Dense, LSTM, Dropout, Input, TimeDistributed, Masking
 from tensorflow.keras.callbacks import TensorBoard
 #from tensorflow.keras.callbacks import CSVLogger
 import tensorflow as tf
@@ -34,10 +34,10 @@ from functools import partial
 # data = data.values[:,2:3]#[:,::2]
 
 n_company = 58
-start_train = 12
-end_train = 96
-end_test = 126
-batch_size = 12
+start_train = 4
+end_train = 32
+end_test = 42
+batch_size = 4
 
 # Importing the training set
 data = pd.read_csv('rating_data.csv', index_col=0)
@@ -78,8 +78,9 @@ data = [Rating,Gross_Margin, Operating_Margin, Net_Profit_Margin, Return_on_Equi
 
 data = np.delete(data,[1,6],axis=0)
 data = np.delete(data,[1,34,45,50,51,57],axis=2)
+n_company = 52
 
-data = np.transpose(data)
+data = np.transpose(data)[:,2::3,:]
 
 # Feature Scaling
 X_sc = MinMaxScaler(feature_range=(0, 1))
@@ -89,16 +90,18 @@ y_sc = MinMaxScaler(feature_range=(0, 1))
 def create_data(data_unscaled, start_train ,end_train ,n_windows,n_outputs):
     X = []
     y = []
-    for i in range(start_train, end_train):
-        for j in range(0,n_company-6):
+    for j in range(0, n_company):
+        for i in range(start_train, end_train):
             X.append(data_unscaled[j, i-n_windows:i, 0:n_inputs+1])
             y.append(data_unscaled[j, i-n_windows+1:i+1, n_outputs:n_outputs+1])
             #y.append(data_unscaled[i:i+n_windows, n_outputs:n_outputs+1])
     X, y = np.array(X), np.array(y)
     X_scaled = X_sc.fit_transform(np.reshape(X, (X.shape[0]* X.shape[1], X.shape[2])))
     y_scaled = y_sc.fit_transform(np.reshape(y, (y.shape[0]* y.shape[1], y.shape[2])))
-    X_scaled = np.reshape(X_scaled, (X.shape[0], X.shape[1], X.shape[2]))
-    y_scaled = np.reshape(y_scaled, (y.shape[0], y.shape[1], y.shape[2]))
+    X_scaled = np.reshape(X_scaled, (n_company, int(X.shape[0]/n_company), X.shape[1], X.shape[2]))
+    y_scaled = np.reshape(y_scaled, (n_company, int(y.shape[0]/n_company), y.shape[1], y.shape[2]))
+    X_scaled = np.transpose(X_scaled, axes=(1, 0, 2, 3))
+    y_scaled = np.transpose(y_scaled, axes=(1, 0, 2, 3))
     print(X_scaled.shape,y_scaled.shape)
     return X_scaled, y_scaled
 
@@ -109,8 +112,8 @@ HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([100]))
 HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.1,0.11))
 HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['rmsprop']))
 HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(0,12))))
-HP_WINDOW = hp.HParam('window_size',hp.Discrete([12]))
-HP_HORIZON = hp.HParam('horizon_size',hp.Discrete([12]))
+HP_WINDOW = hp.HParam('window_size',hp.Discrete([4]))
+HP_HORIZON = hp.HParam('horizon_size',hp.Discrete([4]))
 #HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(n_outputs-1))))
 METRIC_ACCURACY = 'loss'
 
@@ -128,17 +131,19 @@ def train_model(run_dir,hparams):
 
     tf.compat.v1.keras.backend.clear_session()
     model = Sequential()
-    model.add(LSTM(hparams[HP_NUM_UNITS], return_sequences=True ,input_shape=(hparams[HP_WINDOW], n_inputs+1) ,activation='tanh' ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT]))
-    model.add(LSTM(hparams[HP_NUM_UNITS], activation='tanh' ,return_sequences=True ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
-    model.add(LSTM(hparams[HP_NUM_UNITS], activation='tanh' ,return_sequences=True ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
-    model.add(LSTM(hparams[HP_NUM_UNITS], activation='tanh' ,return_sequences=False ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT]))
+    model.add(TimeDistributed(Masking(mask_value=0., input_shape=(hparams[HP_WINDOW], n_inputs+1)), input_shape=(n_company, hparams[HP_WINDOW], n_inputs+1)))
+    model.add(TimeDistributed(LSTM(hparams[HP_NUM_UNITS], stateful=False, activation='tanh', return_sequences=True, input_shape=(hparams[HP_WINDOW], n_inputs+1), kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1), dropout=hparams[HP_DROPOUT] ,recurrent_dropout=hparams[HP_DROPOUT])))
+    model.add(TimeDistributed(LSTM(hparams[HP_NUM_UNITS], stateful=False, activation='tanh' ,return_sequences=False ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT])))
+    #model.add(TimeDistributed(LSTM(hparams[HP_NUM_UNITS], stateful=False, activation='tanh' ,return_sequences=True ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT])))
+    #model.add(TimeDistributed(LSTM(hparams[HP_NUM_UNITS], stateful=False, activation='tanh' ,return_sequences=False ,kernel_initializer='TruncatedNormal' ,bias_initializer=initializers.Constant(value=0.1) ,dropout=hparams[HP_DROPOUT], recurrent_dropout=hparams[HP_DROPOUT])))
     model.add(Dense(units=1, activation='linear'))
     model.compile(optimizer=hparams[HP_OPTIMIZER], loss='mse') #get_weighted_loss(weights=weights)) # metrics=['mae'])
+    model.build(input_shape=(None, n_company, hparams[HP_WINDOW], n_inputs+1))
     model.summary()
-    model.fit(X_train, y_train[:, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0], epochs=1, validation_data=(X_test, y_test[:, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0]))
-    #model.fit(X_train, y_train[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0]), callbacks=[
-    #    TensorBoard(log_dir=run_dir, histogram_freq=10, write_graph=True, write_grads=True, update_freq='epoch'),
-    #    hp.KerasCallback(writer=run_dir, hparams=hparams)])
+    #model.fit(X_train, y_train[:, :, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0], epochs=1, batch_size=batch_size, validation_data=(X_test, y_test[:, :, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0]))
+    model.fit(X_train, y_train[:, :, hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0], epochs=200, batch_size=batch_size, validation_data=(X_test, y_test[:, :, hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0]), callbacks=[
+        TensorBoard(log_dir=run_dir, histogram_freq=10, write_graph=True, write_grads=True, update_freq='epoch'),
+        hp.KerasCallback(writer=run_dir, hparams=hparams)])
     model.save('model_' + str(hparams[HP_NUM_UNITS]) + '_' + str(hparams[HP_DROPOUT]) + '_' + str(hparams[HP_OPTIMIZER]) + '_' + str(hparams[HP_WINDOW]) + '_' + str(hparams[HP_OUTPUT]) + '.h5')
 
     return 0
@@ -146,8 +151,8 @@ def train_model(run_dir,hparams):
 def test_model(hparams):
 
     [X_test, y_test] = create_data(data_unscaled=data, start_train=end_train, end_train=end_test, n_windows=hparams[HP_WINDOW], n_outputs=0)
-    pd.DataFrame(X_sc.inverse_transform(np.reshape(X_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (X_test.shape[0],X_test.shape[2])))).to_csv('X_'+ str(hparams[HP_WINDOW]) +'.csv')
-    pd.DataFrame(y_sc.inverse_transform(np.reshape(y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (y_test.shape[0],y_test.shape[2])))).to_csv('y_'+ str(hparams[HP_WINDOW]) +'.csv')
+    #pd.DataFrame(X_sc.inverse_transform(np.reshape(X_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (X_test.shape[0],X_test.shape[2])))).to_csv('X_'+ str(hparams[HP_WINDOW]) +'.csv')
+    #pd.DataFrame(y_sc.inverse_transform(np.reshape(y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (y_test.shape[0],y_test.shape[2])))).to_csv('y_'+ str(hparams[HP_WINDOW]) +'.csv')
 
     X_test_extended = X_test
     for iteration_w in range(hparams[HP_WINDOW]):
@@ -158,13 +163,14 @@ def test_model(hparams):
                 hparams[HP_OPTIMIZER]) + '_' + str(hparams[HP_WINDOW]) + '_' + str(iteration_o) + '.h5')
             print(str(iteration_w) + ' ' + str(iteration_o))
             predicted.append(model.predict(X_test_extended))
-        predicted = np.transpose(predicted,axes=(1,2,0))
-        X_test_extended = np.concatenate((X_test_extended[:, -hparams[HP_WINDOW]+1:, :], predicted), axis=1)
+        predicted = np.transpose(predicted,axes=(1,2,3,0))
+        X_test_extended = np.concatenate((X_test_extended[:, :, -hparams[HP_WINDOW]+1:, :], predicted), axis=2)
 
     predicted = X_test_extended
 
     for iteration_h in hparams[HP_HORIZON]:
-        pd.DataFrame(X_sc.inverse_transform(np.reshape(predicted[::iteration_h, :iteration_h, :], (predicted.shape[0], predicted.shape[2])))).to_csv('pred_' + str(iteration_h) + '.csv')
+        pd.DataFrame(np.reshape(np.transpose(np.reshape(X_sc.inverse_transform(np.reshape(X_test, (X_test.shape[0] * X_test.shape[1] * X_test.shape[2], X_test.shape[3])))[:, 0],(X_test.shape[0], X_test.shape[1], X_test.shape[2]))[::iteration_h, :, :iteration_h],axes=(1, 0, 2)), (X_test.shape[1], -1))).to_csv('X_' + str(iteration_h) + '.csv')
+        pd.DataFrame(np.reshape(np.transpose(np.reshape(X_sc.inverse_transform(np.reshape(predicted, (predicted.shape[0] * predicted.shape[1] * predicted.shape[2], predicted.shape[3])))[:, 0],(predicted.shape[0], predicted.shape[1], predicted.shape[2]))[::iteration_h, :, :iteration_h],axes=(1, 0, 2)), (predicted.shape[1], -1))).to_csv('pred' + str(iteration_h) + '.csv')
 
     return 0
 
@@ -188,4 +194,4 @@ for num_units in HP_NUM_UNITS.domain.values:
                     run_dir = os.path.join("logs/hparam_tuning/", run_name)
                     train_model(run_dir, hparams)
 
-test_model({HP_NUM_UNITS: 100, HP_DROPOUT: round(0.1,1), HP_OPTIMIZER: 'rmsprop', HP_OUTPUT: 12, HP_WINDOW: 12, HP_HORIZON:[1,3,6,12]})
+test_model({HP_NUM_UNITS: 100, HP_DROPOUT: round(0.1,1), HP_OPTIMIZER: 'rmsprop', HP_OUTPUT: 12, HP_WINDOW: 4, HP_HORIZON:[1,2,4]})
