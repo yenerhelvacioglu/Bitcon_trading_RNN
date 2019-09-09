@@ -35,10 +35,10 @@ from functools import partial
 # data = data.values[:,2:3]#[:,::2]
 
 n_company = 58
-start_train = 4
-end_train = 32
+start_train = 12
+end_train = 34
 end_test = 42
-batch_size = 4
+batch_size = 8
 
 # Importing the training set
 data = pd.read_csv('rating_data.csv', index_col=0)
@@ -78,8 +78,8 @@ Share_Price = data.values[:,3074:3074+n_company]
 data = [Rating,Gross_Margin, Operating_Margin, Net_Profit_Margin, Return_on_Equity, Return_on_Assets, Current_Ratio, Liabilities_to_Equity_Ratio, Debt_to_Assets_Ratio, EV_EBITDA, EV_Sales, Book_to_Market, Operating_Income_EV, Share_Price]
 
 data = np.delete(data,[1,6],axis=0)
-data = np.delete(data,[1,34,45,50,51,57],axis=2)
-n_company = 52
+data = np.delete(data,[1,34,45,50,51,57,15,31,39,47],axis=2)
+n_company = 48
 
 data = np.transpose(data)[:,2::3,:]
 #pd.DataFrame(data[:,:,0]).to_csv('rating_data_used.csv')
@@ -112,9 +112,9 @@ def create_data(data_unscaled, start_train ,end_train ,n_windows,n_outputs):
 # Part 2 - Building the RNN
 
 HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([100]))
-HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.1,0.11))
+HP_DROPOUT = hp.HParam('dropout', hp.RealInterval(0.20,0.21))
 HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['rmsprop']))
-HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(0,1))))
+HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(0,12))))
 HP_WINDOW = hp.HParam('window_size',hp.Discrete([4]))
 HP_HORIZON = hp.HParam('horizon_size',hp.Discrete([4]))
 #HP_OUTPUT = hp.HParam('output_number',hp.Discrete(list(range(n_outputs-1))))
@@ -144,10 +144,13 @@ def train_model(run_dir,hparams):
     model.build(input_shape=(None, n_company, hparams[HP_WINDOW], n_inputs+1))
     model.summary()
     #model.fit(X_train, to_categorical(y_train[:, :, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0],20), epochs=100, batch_size=batch_size, validation_data=(X_test, to_categorical(y_test[:, :, hparams[HP_WINDOW]-1:hparams[HP_WINDOW], 0],20)))
-    model.fit(X_train, to_categorical(y_train[:, :, hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0],20), epochs=200, batch_size=batch_size, validation_data=(X_test, to_categorical(y_test[:, :, hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0],20)), callbacks=[
+    model.fit(X_train, to_categorical(y_train[:, :, hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0],20), epochs=1000, batch_size=batch_size, validation_data=(X_test, to_categorical(y_test[:, :, hparams[HP_WINDOW]-1:hparams[HP_WINDOW],0],20)), callbacks=[
         TensorBoard(log_dir=run_dir, histogram_freq=50, write_graph=True, write_grads=True, update_freq='epoch'),
         hp.KerasCallback(writer=run_dir, hparams=hparams)])
     model.save('model_' + str(hparams[HP_NUM_UNITS]) + '_' + str(hparams[HP_DROPOUT]) + '_' + str(hparams[HP_OPTIMIZER]) + '_' + str(hparams[HP_WINDOW]) + '_' + str(hparams[HP_OUTPUT]) + '.h5')
+
+    pd.DataFrame(np.argmax(model.predict(X_test),axis=2)).to_csv('pred.csv')
+    pd.DataFrame(np.reshape(np.transpose(model.predict(X_test),axes=(1,0,2)), (X_test.shape[0]*X_test.shape[1],20))).to_csv('pred_weights.csv')
 
     return 0
 
@@ -158,7 +161,7 @@ def test_model(hparams):
     #pd.DataFrame(y_sc.inverse_transform(np.reshape(y_test[:,hparams[HP_WINDOW]-1:hparams[HP_WINDOW],:], (y_test.shape[0],y_test.shape[2])))).to_csv('y_'+ str(hparams[HP_WINDOW]) +'.csv')
 
     X_test_extended = X_test
-    for iteration_w in range(hparams[HP_WINDOW]):
+    for iteration_w in range(max(hparams[HP_HORIZON])):
         predicted = []
         for iteration_o in range(hparams[HP_OUTPUT]):
             tf.compat.v1.keras.backend.clear_session()
@@ -186,7 +189,7 @@ for num_units in HP_NUM_UNITS.domain.values:
                 for n_windows in HP_WINDOW.domain.values:
                     hparams = {
                         HP_NUM_UNITS: num_units,
-                        HP_DROPOUT: round(dropout_rate,1),
+                        HP_DROPOUT: round(dropout_rate,2),
                         HP_OPTIMIZER: optimizer,
                         HP_OUTPUT: output_number,
                         HP_WINDOW: n_windows,
@@ -197,4 +200,4 @@ for num_units in HP_NUM_UNITS.domain.values:
                     run_dir = os.path.join("logs/hparam_tuning/", run_name)
                     train_model(run_dir, hparams)
 
-#test_model({HP_NUM_UNITS: 100, HP_DROPOUT: round(0.1,1), HP_OPTIMIZER: 'rmsprop', HP_OUTPUT: 1, HP_WINDOW: 4, HP_HORIZON:[1,2,4]})
+#test_model({HP_NUM_UNITS: 100, HP_DROPOUT: round(0.1,2), HP_OPTIMIZER: 'rmsprop', HP_OUTPUT: 1, HP_WINDOW: 4, HP_HORIZON:[1,2,4]})
